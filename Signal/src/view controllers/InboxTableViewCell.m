@@ -1,15 +1,18 @@
 //  Created by Dylan Bourgeois on 27/10/14.
 //  Copyright (c) 2014 Open Whisper Systems. All rights reserved.
 
-#import <JSQMessagesViewController/JSQMessagesAvatarImageFactory.h>
-#import <JSQMessagesViewController/UIImage+JSQMessages.h>
-#import "Environment.h"
 #import "InboxTableViewCell.h"
+#import "Environment.h"
+#import "OWSAvatarBuilder.h"
 #import "PreferencesUtil.h"
 #import "TSContactThread.h"
 #import "TSGroupThread.h"
 #import "TSMessagesManager.h"
 #import "Util.h"
+#import <JSQMessagesViewController/JSQMessagesAvatarImageFactory.h>
+#import <JSQMessagesViewController/UIImage+JSQMessages.h>
+
+NS_ASSUME_NONNULL_BEGIN
 
 #define ARCHIVE_IMAGE_VIEW_WIDTH 22.0f
 #define DELETE_IMAGE_VIEW_WIDTH 19.0f
@@ -39,11 +42,13 @@
     self.selectionStyle = UITableViewCellSelectionStyleDefault;
 }
 
-- (NSString *)reuseIdentifier {
+- (nullable NSString *)reuseIdentifier
+{
     return NSStringFromClass(self.class);
 }
 
-- (void)configureWithThread:(TSThread *)thread {
+- (void)configureWithThread:(TSThread *)thread contactsManager:(OWSContactsManager *)contactsManager
+{
     if (!_threadId || ![_threadId isEqualToString:thread.uniqueId]) {
         dispatch_async(dispatch_get_main_queue(), ^{
             self.hidden = YES;
@@ -66,49 +71,19 @@
           _contactPictureView.image = ((TSGroupThread *)thread).groupModel.groupImage != nil
                                           ? ((TSGroupThread *)thread).groupModel.groupImage
                                           : [UIImage imageNamed:@"empty-group-avatar"];
+
           if ([_nameLabel.text length] == 0) {
               _nameLabel.text = NSLocalizedString(@"NEW_GROUP_DEFAULT_TITLE", @"");
           }
-          if (_contactPictureView.image != nil) {
-              dispatch_async(dispatch_get_main_queue(), ^{
-                [UIUtil applyRoundedBorderToImageView:&_contactPictureView];
-              });
-          }
       } else {
-          NSMutableString *initials = [NSMutableString string];
-
-          if ([name length] > 0) {
-              NSArray *words = [name componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-              for (NSString *word in words) {
-                  if ([word length] > 0) {
-                      NSString *firstLetter = [word substringToIndex:1];
-                      [initials appendString:[firstLetter uppercaseString]];
-                  }
-              }
-          }
-
-          NSRange stringRange = {0, MIN([initials length], (NSUInteger)3)}; // Rendering max 3 letters.
-          initials            = [[initials substringWithRange:stringRange] mutableCopy];
-
-          UIColor *backgroundColor =
-              thread.isGroupThread ? [UIColor whiteColor]
-                                   : [UIColor backgroundColorForContact:((TSContactThread *)thread).contactIdentifier];
-          dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            UIImage *image =
-                [[JSQMessagesAvatarImageFactory avatarImageWithUserInitials:initials
-                                                            backgroundColor:backgroundColor
-                                                                  textColor:[UIColor whiteColor]
-                                                                       font:[UIFont ows_boldFontWithSize:36.0]
-                                                                   diameter:100] avatarImage];
-            dispatch_async(dispatch_get_main_queue(), ^{
-              _contactPictureView.image = thread.image != nil ? thread.image : image;
-
-              if (thread.image != nil) {
-                  [UIUtil applyRoundedBorderToImageView:&_contactPictureView];
-              }
-            });
-          });
+          OWSAvatarBuilder *avatarBuilder = [[OWSAvatarBuilder alloc] initWithContactsManager:contactsManager
+                                                                                     signalId:thread.contactIdentifier
+                                                                                  contactName:thread.name];
+          _contactPictureView.image = [avatarBuilder build];
       }
+
+      [UIUtil applyRoundedBorderToImageView:&_contactPictureView];
+
 
       self.separatorInset = UIEdgeInsetsMake(0, _contactPictureView.frame.size.width * 1.5f, 0, 0);
 
@@ -225,3 +200,5 @@
 
 
 @end
+
+NS_ASSUME_NONNULL_END

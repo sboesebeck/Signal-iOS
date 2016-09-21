@@ -4,7 +4,7 @@ set -x
 
 function usage() {
 cat <<EOS
-Extracts string from target file to new.strings
+Extracts string from target file and appends to Localizable.strings
 
     $0 <filename.m>
 
@@ -22,6 +22,7 @@ then
   exit 1
 fi
 
-OUTPUT_DIR=new_strings
+# pwd.
+OUTPUT_DIR=.
 mkdir -p "${OUTPUT_DIR}"
-genstrings -o "${OUTPUT_DIR}" "${TARGET}"
+genstrings -a -o "${OUTPUT_DIR}" "${TARGET}"

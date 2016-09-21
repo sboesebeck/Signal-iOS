@@ -17,6 +17,7 @@
 #import "NewGroupViewController.h"
 #import "OWSCall.h"
 #import "OWSCallCollectionViewCell.h"
+#import "OWSContactInfoTableViewController.h"
 #import "OWSContactsManager.h"
 #import "OWSDisplayedMessageCollectionViewCell.h"
 #import "OWSErrorMessage.h"
@@ -51,6 +52,7 @@
 #import <MobileCoreServices/UTCoreTypes.h>
 #import <SignalServiceKit/MimeTypeUtil.h>
 #import <SignalServiceKit/OWSFingerprint.h>
+#import <SignalServiceKit/OWSFingerprintBuilder.h>
 #import <SignalServiceKit/SignalRecipient.h>
 #import <SignalServiceKit/TSAccountManager.h>
 #import <YapDatabase/YapDatabaseView.h>
@@ -65,9 +67,11 @@
 #define JSQ_IMAGE_INSET 5
 
 static NSTimeInterval const kTSMessageSentDateShowTimeInterval = 5 * 60;
-static NSString *const kUpdateGroupSegueIdentifier             = @"updateGroupSegue";
-static NSString *const kFingerprintSegueIdentifier             = @"fingerprintSegue";
-static NSString *const kShowGroupMembersSegue                  = @"showGroupMembersSegue";
+static NSString *const OWSMessagesViewControllerSegueUpdateGroup = @"updateGroupSegue";
+static NSString *const OWSMessagesViewControllerSegueShowFingerprint = @"fingerprintSegue";
+static NSString *const OWSMessagesViewControllerSegueShowGroupMembers = @"showGroupMembersSegue";
+static NSString *const OWSMessagesViewControllerSeguePushConversationSettings =
+    @"OWSMessagesViewControllerSeguePushConversationSettings";
 
 typedef enum : NSUInteger {
     kMediaTypePicture,
@@ -85,24 +89,24 @@ typedef enum : NSUInteger {
 }
 
 @property TSThread *thread;
-@property (nonatomic, weak) UIView *navView;
 @property (nonatomic, strong) YapDatabaseConnection *editingDatabaseConnection;
 @property (nonatomic, strong) YapDatabaseConnection *uiDatabaseConnection;
 @property (nonatomic, strong) YapDatabaseViewMappings *messageMappings;
+
 @property (nonatomic, retain) JSQMessagesBubbleImage *outgoingBubbleImageData;
 @property (nonatomic, retain) JSQMessagesBubbleImage *incomingBubbleImageData;
 @property (nonatomic, retain) JSQMessagesBubbleImage *currentlyOutgoingBubbleImageData;
 @property (nonatomic, retain) JSQMessagesBubbleImage *outgoingMessageFailedImageData;
+
 @property (nonatomic, strong) NSTimer *audioPlayerPoller;
 @property (nonatomic, strong) TSVideoAttachmentAdapter *currentMediaAdapter;
 
 @property (nonatomic, retain) NSTimer *readTimer;
+@property (nonatomic, strong) UILabel *navbarTitleLabel;
 @property (nonatomic, retain) UIButton *attachButton;
 
 @property (nonatomic, retain) NSIndexPath *lastDeliveredMessageIndexPath;
-@property (nonatomic, retain) UIGestureRecognizer *showFingerprintGesture;
-@property (nonatomic, retain) UITapGestureRecognizer *toggleContactPhoneGesture;
-@property (nonatomic) BOOL displayPhoneAsTitle;
+
 
 @property NSUInteger page;
 @property (nonatomic) BOOL composeOnOpen;
@@ -112,11 +116,6 @@ typedef enum : NSUInteger {
 @property (nonatomic, readonly) OWSContactsManager *contactsManager;
 @property NSCache *messageAdapterCache;
 
-@end
-
-@interface UINavigationItem () {
-    UIView *backButtonView;
-}
 @end
 
 @implementation MessagesViewController
@@ -216,13 +215,6 @@ typedef enum : NSUInteger {
     [self.navigationController.navigationBar setTranslucent:NO];
 
     self.messageAdapterCache = [[NSCache alloc] init];
-
-    self.showFingerprintGesture =
-        [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(showFingerprint)];
-
-    self.toggleContactPhoneGesture =
-        [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(toggleContactPhone)];
-
     _attachButton = [[UIButton alloc] init];
     [_attachButton setFrame:CGRectMake(0,
                                        0,
@@ -247,6 +239,11 @@ typedef enum : NSUInteger {
     self.senderDisplayName = ME_MESSAGE_IDENTIFIER;
 
     [self initializeToolbars];
+}
+
+- (void)didMoveToParentViewController:(UIViewController *)parent
+{
+    [self setupTitleLabelGestureRecognizer];
 }
 
 - (void)registerCustomMessageNibs
@@ -331,8 +328,6 @@ typedef enum : NSUInteger {
     [self dismissKeyBoard];
     [self startReadTimer];
 
-    [self initializeTitleLabelGestureRecognizer];
-
     // TODO prep this sync one time before view loads so we don't have to repaint.
     [self updateBackButtonAsync];
 
@@ -390,7 +385,6 @@ typedef enum : NSUInteger {
     }
 
     [self cancelReadTimer];
-    [self removeTitleLabelGestureRecognizer];
     [self saveDraft];
 }
 
@@ -491,13 +485,10 @@ typedef enum : NSUInteger {
     }
 }
 
-- (void)setNavigationTitle {
-    NSString *navTitle = self.thread.name;
-    if (isGroupConversation && [navTitle length] == 0) {
-        navTitle = NSLocalizedString(@"NEW_GROUP_DEFAULT_TITLE", @"");
-    }
+- (void)setNavigationTitle
+{
     self.navController.activeNavigationBarTitle = nil;
-    self.title                                  = navTitle;
+    self.title = self.thread.name;
 }
 
 - (void)initializeToolbars
@@ -536,47 +527,48 @@ typedef enum : NSUInteger {
     [self setNavigationTitle];
 }
 
-- (void)initializeTitleLabelGestureRecognizer {
+- (void)setupTitleLabelGestureRecognizer
+{
     if (isGroupConversation) {
         return;
     }
 
+    // Called on load/unload, but we only want to init once.
+    if (self.navbarTitleLabel) {
+        return;
+    }
+
+    UILabel *navbarTitleLabel = [self findNavbarTitleLabel];
+    if (!navbarTitleLabel) {
+        DDLogError(@"%@ Unable to find navbar title label. Skipping gesture recognition", self.tag);
+        return;
+    }
+
+    self.navbarTitleLabel = navbarTitleLabel;
+    navbarTitleLabel.userInteractionEnabled = YES;
+    navbarTitleLabel.superview.userInteractionEnabled = YES;
+
+    UITapGestureRecognizer *titleTapRecognizer =
+        [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(didTapTitle)];
+    [navbarTitleLabel addGestureRecognizer:titleTapRecognizer];
+}
+
+- (nullable UILabel *)findNavbarTitleLabel
+{
     for (UIView *view in self.navigationController.navigationBar.subviews) {
         if ([view isKindOfClass:NSClassFromString(@"UINavigationItemView")]) {
-            self.navView = view;
-            for (UIView *aView in self.navView.subviews) {
+            UIView *navItemView = view;
+            for (UIView *aView in navItemView.subviews) {
                 if ([aView isKindOfClass:[UILabel class]]) {
                     UILabel *label = (UILabel *)aView;
                     if ([label.text isEqualToString:self.title]) {
-                        [self.navView setUserInteractionEnabled:YES];
-                        [aView setUserInteractionEnabled:YES];
-                        [aView addGestureRecognizer:self.showFingerprintGesture];
-                        [aView addGestureRecognizer:self.toggleContactPhoneGesture];
-                        return;
+                        return label;
                     }
                 }
             }
         }
     }
-}
-
-- (void)removeTitleLabelGestureRecognizer {
-    if (isGroupConversation) {
-        return;
-    }
-
-    for (UIView *aView in self.navView.subviews) {
-        if ([aView isKindOfClass:[UILabel class]]) {
-            UILabel *label = (UILabel *)aView;
-            if ([label.text isEqualToString:self.title]) {
-                [self.navView setUserInteractionEnabled:NO];
-                [aView setUserInteractionEnabled:NO];
-                [aView removeGestureRecognizer:self.showFingerprintGesture];
-                [aView removeGestureRecognizer:self.toggleContactPhoneGesture];
-                return;
-            }
-        }
-    }
+    return nil;
 }
 
 // Overiding JSQMVC layout defaults
@@ -610,30 +602,19 @@ typedef enum : NSUInteger {
 
 #pragma mark - Fingerprints
 
-- (void)showFingerprint
-{
-    // Show fingerprint for their most recently accepted identity
-    NSString *theirSignalId = self.thread.contactIdentifier;
-    NSData *theirIdentityKey = [self.storageManager identityKeyForRecipientId:theirSignalId];
-    [self showFingerprintWithTheirIdentityKey:theirIdentityKey theirSignalId:theirSignalId];
-}
-
 - (void)showFingerprintWithTheirIdentityKey:(NSData *)theirIdentityKey theirSignalId:(NSString *)theirSignalId
 {
-    NSString *mySignalId = [self.storageManager localNumber];
-    NSData *myIdentityKey = [self.storageManager identityKeyPair].publicKey;
-    OWSFingerprint *fingerprint = [OWSFingerprint fingerprintWithMyStableId:mySignalId
-                                                              myIdentityKey:myIdentityKey
-                                                              theirStableId:theirSignalId
-                                                           theirIdentityKey:theirIdentityKey];
-
+    OWSFingerprintBuilder *builder = [[OWSFingerprintBuilder alloc] initWithStorageManager:self.storageManager];
+    OWSFingerprint *fingerprint =
+        [builder fingerprintWithTheirSignalId:self.thread.contactIdentifier theirIdentityKey:theirIdentityKey];
     [self markAllMessagesAsRead];
-    [self performSegueWithIdentifier:kFingerprintSegueIdentifier sender:fingerprint];
+    [self performSegueWithIdentifier:OWSMessagesViewControllerSegueShowFingerprint sender:fingerprint];
 }
 
-
+// TODO deprecated. Move this functionality into conversation settings controller.
 - (void)toggleContactPhone {
-    _displayPhoneAsTitle = !_displayPhoneAsTitle;
+    // disabled since we're going to settings.
+    //    _displayPhoneAsTitle = !_displayPhoneAsTitle;
 
     if (!_thread.isGroupThread) {
         Contact *contact = [self.contactsManager latestContactForPhoneNumber:[self phoneNumberForThread]];
@@ -705,17 +686,12 @@ typedef enum : NSUInteger {
         }
     }
 
-    if (_displayPhoneAsTitle) {
-        self.title = [PhoneNumber
-            bestEffortFormatPartialUserSpecifiedTextToLookLikeAPhoneNumber:[[self phoneNumberForThread] toE164]];
-    } else {
-        [self setNavigationTitle];
-    }
+    [self setNavigationTitle];
 }
 
 - (void)showGroupMembers {
     [self.navController hideDropDown:self];
-    [self performSegueWithIdentifier:kShowGroupMembersSegue sender:self];
+    [self performSegueWithIdentifier:OWSMessagesViewControllerSegueShowGroupMembers sender:self];
 }
 
 #pragma mark - Calls
@@ -1101,6 +1077,12 @@ typedef enum : NSUInteger {
 
 #pragma mark - Actions
 
+- (void)didTapTitle
+{
+    DDLogDebug(@"%@ Tapped title", self.tag);
+    [self performSegueWithIdentifier:OWSMessagesViewControllerSeguePushConversationSettings sender:self];
+}
+
 - (void)collectionView:(JSQMessagesCollectionView *)collectionView
     didTapMessageBubbleAtIndexPath:(NSIndexPath *)indexPath
 {
@@ -1485,22 +1467,38 @@ typedef enum : NSUInteger {
 #pragma mark - Navigation
 
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
-    if ([segue.identifier isEqualToString:kFingerprintSegueIdentifier]) {
-        FingerprintViewController *vc = [segue destinationViewController];
-        if ([sender isKindOfClass:[OWSFingerprint class]]) {
-            OWSFingerprint *fingerprint = (OWSFingerprint *)sender;
-            NSString *contactName = [self.contactsManager nameStringForPhoneIdentifier:fingerprint.theirStableId];
-            [vc configureWithThread:self.thread fingerprint:fingerprint contactName:contactName];
-        } else {
-            DDLogError(@"%@ Attempting to segueu to fingerprint VC without a valid fingerprint: %@", self.tag, sender);
+    if ([segue.identifier isEqualToString:OWSMessagesViewControllerSegueShowFingerprint]) {
+        if (![segue.destinationViewController isKindOfClass:[FingerprintViewController class]]) {
+            DDLogError(@"%@ Expected Fingerprint VC but got: %@", self.tag, segue.destinationViewController);
+            return;
         }
-    } else if ([segue.identifier isEqualToString:kUpdateGroupSegueIdentifier]) {
+        FingerprintViewController *vc = (FingerprintViewController *)segue.destinationViewController;
+
+        if (![sender isKindOfClass:[OWSFingerprint class]]) {
+            DDLogError(@"%@ Attempting to segue to fingerprint VC without a valid fingerprint: %@", self.tag, sender);
+            return;
+        }
+        OWSFingerprint *fingerprint = (OWSFingerprint *)sender;
+
+        NSString *contactName = [self.contactsManager nameStringForPhoneIdentifier:fingerprint.theirStableId];
+        [vc configureWithThread:self.thread fingerprint:fingerprint contactName:contactName];
+    } else if ([segue.identifier isEqualToString:OWSMessagesViewControllerSegueUpdateGroup]) {
         NewGroupViewController *vc = [segue destinationViewController];
         [vc configWithThread:(TSGroupThread *)self.thread];
-    } else if ([segue.identifier isEqualToString:kShowGroupMembersSegue]) {
+    } else if ([segue.identifier isEqualToString:OWSMessagesViewControllerSegueShowGroupMembers]) {
         ShowGroupMembersViewController *vc = [segue destinationViewController];
         [vc configWithThread:(TSGroupThread *)self.thread];
+    } else if ([segue.destinationViewController isKindOfClass:[OWSContactInfoTableViewController class]]) {
+        // TODO flesh this out. reduce duplication... can this stuff be wrapped up in a recipient object?
+        OWSContactInfoTableViewController *controller = (OWSContactInfoTableViewController *)segue.destinationViewController;
+
+        if (![self.thread isKindOfClass:[TSContactThread class]]) {
+            DDLogError(
+                @"%@ Unexpectedly segueing to show contact info with non-contact thread: %@", self.tag, self.thread);
+        }
+        [controller configureWithContactThread:(TSContactThread *)self.thread];
     }
+
 }
 
 
@@ -2022,7 +2020,7 @@ typedef enum : NSUInteger {
 - (void)updateGroup {
     [self.navController hideDropDown:self];
 
-    [self performSegueWithIdentifier:kUpdateGroupSegueIdentifier sender:self];
+    [self performSegueWithIdentifier:OWSMessagesViewControllerSegueUpdateGroup sender:self];
 }
 
 - (void)leaveGroup
