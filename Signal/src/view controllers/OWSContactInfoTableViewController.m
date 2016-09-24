@@ -170,7 +170,7 @@ typedef enum {
     NSUInteger index = (NSUInteger)(slider.value + 0.5);
     [slider setValue:index animated:YES];
     NSNumber *numberOfSeconds = self.disappearingMessagesDurations[index];
-    self.disappearingMessagesConfiguration.seconds = [numberOfSeconds unsignedIntValue];
+    self.disappearingMessagesConfiguration.durationSeconds = [numberOfSeconds unsignedIntValue];
 
     if (self.disappearingMessagesIsEnabled) {
         // TODO fancy formatting. seconds/minutes/hours/days/week.

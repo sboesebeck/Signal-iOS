@@ -16,6 +16,7 @@
 #import "TextSecureKitEnv.h"
 #import "VersionMigrations.h"
 #import "OWSStaleNotificationObserver.h"
+#import <SignalServiceKit/OWSDisappearingMessagesJob.h>
 #import <SignalServiceKit/OWSReadReceiptObserver.h>
 
 static NSString *const kStoryboardName                  = @"Storyboard";
@@ -77,6 +78,9 @@ static NSString *const kURLHostVerifyPrefix             = @"verify";
     if (loggingIsEnabled) {
         [DebugLogger.sharedLogger enableFileLogging];
     }
+
+    // Clean up any messages that expired since last launch.
+    [[[OWSDisappearingMessagesJob alloc] initWithStorageManager:[TSStorageManager sharedManager]] run];
 
     UIStoryboard *storyboard = [UIStoryboard storyboardWithName:kStoryboardName bundle:[NSBundle mainBundle]];
     UIViewController *viewController =
