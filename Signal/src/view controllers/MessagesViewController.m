@@ -1987,10 +1987,9 @@ typedef enum : NSUInteger {
                       }];
 }
 
-- (void)markAllMessagesAsRead {
-    [self.editingDatabaseConnection readWriteWithBlock:^(YapDatabaseReadWriteTransaction *transaction) {
-      [self.thread markAllAsReadWithTransaction:transaction];
-    }];
+- (void)markAllMessagesAsRead
+{
+    [self.thread markAllAsRead];
 }
 
 - (BOOL)collectionView:(UICollectionView *)collectionView
@@ -2179,6 +2178,8 @@ typedef enum : NSUInteger {
 - (NSArray<id<UIPreviewActionItem>> *)previewActionItems {
     return @[];
 }
+
+#pragma mark - Logging
 
 + (NSString *)tag
 {
