@@ -9,12 +9,12 @@
 #import "UIUtil.h"
 #import <25519/Curve25519.h>
 #import <SignalServiceKit/OWSDisappearingMessagesConfiguration.h>
-#import <SignalServiceKit/OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob.h>
 #import <SignalServiceKit/OWSFingerprint.h>
 #import <SignalServiceKit/OWSFingerprintBuilder.h>
+#import <SignalServiceKit/OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob.h>
 #import <SignalServiceKit/TSContactThread.h>
-#import <SignalServiceKit/TSStorageManager.h>
 #import <SignalServiceKit/TSMessagesManager.h>
+#import <SignalServiceKit/TSStorageManager.h>
 
 @interface OWSContactInfoTableViewController ()
 
@@ -36,8 +36,6 @@
 // TODO readonly.
 @property (nonatomic) NSArray<NSNumber *> *disappearingMessagesDurations;
 @property (nonatomic) OWSDisappearingMessagesConfiguration *disappearingMessagesConfiguration;
-
-@property BOOL disappearingMessagesIsEnabled;
 
 @property (nonatomic) TSStorageManager *storageManager;
 @property (nonatomic) OWSContactsManager *contactsManager;
@@ -126,11 +124,13 @@ typedef enum {
 {
     [super viewWillDisappear:animated];
 
-    // FIXME - only if changed.
-    [self.disappearingMessagesConfiguration save];
-    [OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob runWithConfiguration:self.disappearingMessagesConfiguration
-                                                                        thread:self.thread
-                                                               messagesManager:self.messagesManager];
+    if (self.disappearingMessagesConfiguration.dictionaryValueDidChange) {
+        [self.disappearingMessagesConfiguration save];
+        [OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob
+            runWithConfiguration:self.disappearingMessagesConfiguration
+                          thread:self.thread
+                 messagesManager:self.messagesManager];
+    }
 }
 
 - (void)viewDidLayoutSubviews
@@ -160,14 +160,13 @@ typedef enum {
         DDLogError(@"%@ Unexpected sender for disappearing messages switch: %@", self.tag, sender);
     }
     UISwitch *disappearingMessagesSwitch = (UISwitch *)sender;
-    self.disappearingMessagesConfiguration.enabled = YES;
     [self toggleDisappearingMessages:disappearingMessagesSwitch.isOn];
 }
 
 - (void)toggleDisappearingMessages:(BOOL)flag
 {
+    self.disappearingMessagesConfiguration.enabled = flag;
     self.disappearingMessagesSwitch.on = flag;
-    self.disappearingMessagesIsEnabled = flag;
     self.disappearingMessagesDurationLabel.enabled = flag;
     self.disappearingMessagesDurationSlider.enabled = flag;
     [self durationSliderDidChange:self.disappearingMessagesDurationSlider];
@@ -181,7 +180,7 @@ typedef enum {
     NSNumber *numberOfSeconds = self.disappearingMessagesDurations[index];
     self.disappearingMessagesConfiguration.durationSeconds = [numberOfSeconds unsignedIntValue];
 
-    if (self.disappearingMessagesIsEnabled) {
+    if (self.disappearingMessagesConfiguration.isEnabled) {
         // TODO fancy formatting. seconds/minutes/hours/days/week.
         NSString *durationFormat = NSLocalizedString(@"DURATION_IN_SECONDS", @"Slider label, {{number}} of seconds");
         NSString *durationString = [NSString stringWithFormat:durationFormat, numberOfSeconds];
