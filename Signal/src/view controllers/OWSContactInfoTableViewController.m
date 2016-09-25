@@ -9,10 +9,12 @@
 #import "UIUtil.h"
 #import <25519/Curve25519.h>
 #import <SignalServiceKit/OWSDisappearingMessagesConfiguration.h>
+#import <SignalServiceKit/OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob.h>
 #import <SignalServiceKit/OWSFingerprint.h>
 #import <SignalServiceKit/OWSFingerprintBuilder.h>
 #import <SignalServiceKit/TSContactThread.h>
 #import <SignalServiceKit/TSStorageManager.h>
+#import <SignalServiceKit/TSMessagesManager.h>
 
 @interface OWSContactInfoTableViewController ()
 
@@ -39,6 +41,7 @@
 
 @property (nonatomic) TSStorageManager *storageManager;
 @property (nonatomic) OWSContactsManager *contactsManager;
+@property (nonatomic) TSMessagesManager *messagesManager;
 
 @end
 
@@ -57,8 +60,9 @@ typedef enum {
         return self;
     }
 
-    _contactsManager = [[Environment getCurrent] contactsManager];
     _storageManager = [TSStorageManager sharedManager];
+    _contactsManager = [[Environment getCurrent] contactsManager];
+    _messagesManager = [TSMessagesManager sharedManager];
 
     return self;
 }
@@ -70,8 +74,9 @@ typedef enum {
         return self;
     }
 
-    _contactsManager = [[Environment getCurrent] contactsManager];
     _storageManager = [TSStorageManager sharedManager];
+    _contactsManager = [[Environment getCurrent] contactsManager];
+    _messagesManager = [TSMessagesManager sharedManager];
 
     return self;
 }
@@ -120,8 +125,12 @@ typedef enum {
 - (void)viewWillDisappear:(BOOL)animated
 {
     [super viewWillDisappear:animated];
-    // TODO detect change and send message to transmit disappearing message status.
+
+    // FIXME - only if changed.
     [self.disappearingMessagesConfiguration save];
+    [OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob runWithConfiguration:self.disappearingMessagesConfiguration
+                                                                        thread:self.thread
+                                                               messagesManager:self.messagesManager];
 }
 
 - (void)viewDidLayoutSubviews
