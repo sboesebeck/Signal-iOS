@@ -51,6 +51,7 @@
 #import <JSQSystemSoundPlayer.h>
 #import <MobileCoreServices/UTCoreTypes.h>
 #import <SignalServiceKit/MimeTypeUtil.h>
+#import <SignalServiceKit/OWSDisappearingMessagesConfiguration.h>
 #import <SignalServiceKit/OWSFingerprint.h>
 #import <SignalServiceKit/OWSFingerprintBuilder.h>
 #import <SignalServiceKit/SignalRecipient.h>
@@ -739,9 +740,20 @@ typedef enum : NSUInteger {
     if (text.length > 0) {
         [JSQSystemSoundPlayer jsq_playMessageSentSound];
 
-        TSOutgoingMessage *message = [[TSOutgoingMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
-                                                                         inThread:self.thread
-                                                                      messageBody:text];
+        TSOutgoingMessage *message;
+        OWSDisappearingMessagesConfiguration *configuration =
+            [OWSDisappearingMessagesConfiguration fetchObjectWithUniqueID:self.thread.uniqueId];
+        if (configuration.isEnabled) {
+            message = [[TSOutgoingMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
+                                                          inThread:self.thread
+                                                       messageBody:text
+                                                     attachmentIds:@[]
+                                                         expiresIn:configuration.durationSeconds];
+        } else {
+            message = [[TSOutgoingMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
+                                                          inThread:self.thread
+                                                       messageBody:text];
+        }
 
         [[TSMessagesManager sharedManager] sendMessage:message inThread:self.thread success:nil failure:nil];
         [self finishSendingMessage];
@@ -1631,10 +1643,21 @@ typedef enum : NSUInteger {
 
 - (void)sendMessageAttachment:(NSData *)attachmentData ofType:(NSString *)attachmentType
 {
-    TSOutgoingMessage *message = [[TSOutgoingMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
-                                                                     inThread:self.thread
-                                                                  messageBody:nil
-                                                                attachmentIds:[NSMutableArray new]];
+    TSOutgoingMessage *message;
+    OWSDisappearingMessagesConfiguration *configuration =
+        [OWSDisappearingMessagesConfiguration fetchObjectWithUniqueID:self.thread.uniqueId];
+    if (configuration.isEnabled) {
+        message = [[TSOutgoingMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
+                                                      inThread:self.thread
+                                                   messageBody:nil
+                                                 attachmentIds:[NSMutableArray new]
+                                                     expiresIn:configuration.durationSeconds];
+    } else {
+        message = [[TSOutgoingMessage alloc] initWithTimestamp:[NSDate ows_millisecondTimeStamp]
+                                                      inThread:self.thread
+                                                   messageBody:nil
+                                                 attachmentIds:[NSMutableArray new]];
+    }
 
     [self dismissViewControllerAnimated:YES
                              completion:^{
