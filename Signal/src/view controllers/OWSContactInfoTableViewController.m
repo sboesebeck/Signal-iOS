@@ -8,6 +8,8 @@
 #import "OWSContactsManager.h"
 #import "UIUtil.h"
 #import <25519/Curve25519.h>
+#import <SignalServiceKit/NSDate+millisecondTimeStamp.h>
+#import <SignalServiceKit/OWSDisappearingConfigurationUpdateInfoMessage.h>
 #import <SignalServiceKit/OWSDisappearingMessagesConfiguration.h>
 #import <SignalServiceKit/OWSFingerprint.h>
 #import <SignalServiceKit/OWSFingerprintBuilder.h>
@@ -126,6 +128,13 @@ typedef enum {
 
     if (self.disappearingMessagesConfiguration.dictionaryValueDidChange) {
         [self.disappearingMessagesConfiguration save];
+        OWSDisappearingConfigurationUpdateInfoMessage *infoMessage =
+            [[OWSDisappearingConfigurationUpdateInfoMessage alloc]
+                initWithTimestamp:[NSDate ows_millisecondTimeStamp]
+                           thread:self.thread
+                    configuration:self.disappearingMessagesConfiguration];
+        [infoMessage save];
+
         [OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob
             runWithConfiguration:self.disappearingMessagesConfiguration
                           thread:self.thread
@@ -181,13 +190,10 @@ typedef enum {
     self.disappearingMessagesConfiguration.durationSeconds = [numberOfSeconds unsignedIntValue];
 
     if (self.disappearingMessagesConfiguration.isEnabled) {
-        // TODO fancy formatting. seconds/minutes/hours/days/week.
-        NSString *durationFormat = NSLocalizedString(@"DURATION_IN_SECONDS", @"Slider label, {{number}} of seconds");
-        NSString *durationString = [NSString stringWithFormat:durationFormat, numberOfSeconds];
-
-        NSString *keepForFormat
-            = NSLocalizedString(@"KEEP_MESSAGES_DURATION", @"Slider label embeds {{duration string e.g. '2 hours'}}");
-        self.disappearingMessagesDurationLabel.text = [NSString stringWithFormat:keepForFormat, durationString];
+        NSString *keepForFormat = NSLocalizedString(@"KEEP_MESSAGES_DURATION",
+            @"Slider label embeds {{TIME_AMOUNT}}, e.g. '2 hours'. See *_TIME_AMOUNT strings for examples.");
+        self.disappearingMessagesDurationLabel.text =
+            [NSString stringWithFormat:keepForFormat, self.disappearingMessagesConfiguration.durationString];
     } else {
         self.disappearingMessagesDurationLabel.text
             = NSLocalizedString(@"KEEP_MESSAGES_FOREVER", @"Slider label when disappearing messages is off");
