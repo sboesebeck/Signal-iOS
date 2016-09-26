@@ -1,75 +1,66 @@
-//  Created by Michael Kirk on 9/22/16.
+//  Created by Michael Kirk on 9/26/16.
 //  Copyright © 2016 Open Whisper Systems. All rights reserved.
 
 #import "OWSAvatarBuilder.h"
-#import "OWSContactsManager.h"
-#import "UIColor+OWS.h"
-#import "UIFont+OWS.h"
-#import <JSQMessagesViewController/JSQMessagesAvatarImageFactory.h>
+#import "OWSContactAvatarBuilder.h"
+#import "OWSGroupAvatarBuilder.h"
+#import "TSContactThread.h"
+#import "TSGroupThread.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface OWSAvatarBuilder ()
-
-@property (nonatomic, readonly) OWSContactsManager *contactsManager;
-@property (nonatomic, readonly) NSString *signalId;
-@property (nonatomic, readonly) NSString *contactName;
-
-@end
-
 @implementation OWSAvatarBuilder
 
-- (instancetype)initWithContactsManager:(OWSContactsManager *)contactsManager
-                               signalId:(NSString *)signalId
-                            contactName:(NSString *)contactName
++ (UIImage *)buildImageForThread:(TSThread *)thread contactsManager:(OWSContactsManager *)contactsManager
 {
-    self = [super init];
-    if (!self) {
-        return self;
+    OWSAvatarBuilder *avatarBuilder;
+    if ([thread isKindOfClass:[TSContactThread class]]) {
+        avatarBuilder =
+            [[OWSContactAvatarBuilder alloc] initWithThread:(TSContactThread *)thread contactsManager:contactsManager];
+    } else if ([thread isKindOfClass:[TSGroupThread class]]) {
+        avatarBuilder = [[OWSGroupAvatarBuilder alloc] initWithThread:(TSGroupThread *)thread];
+    } else {
+        DDLogError(@"%@ called with unsupported thread: %@", self.tag, thread);
     }
-
-    _contactsManager = contactsManager;
-    _signalId = signalId;
-    _contactName = contactName;
-
-    return self;
-}
-
-- (UIImage *)buildDefaultImage
-{
-    NSMutableString *initials = [NSMutableString string];
-
-    if (self.contactName.length > 0) {
-        NSArray *words =
-            [self.contactName componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-        for (NSString *word in words) {
-            if (word.length > 0) {
-                NSString *firstLetter = [word substringToIndex:1];
-                [initials appendString:[firstLetter uppercaseString]];
-            }
-        }
-    }
-
-    NSRange stringRange = { 0, MIN([initials length], (NSUInteger)3) }; // Rendering max 3 letters.
-    initials = [[initials substringWithRange:stringRange] mutableCopy];
-
-    UIColor *backgroundColor = [UIColor backgroundColorForContact:self.signalId];
-
-    return [[JSQMessagesAvatarImageFactory avatarImageWithUserInitials:initials
-                                                       backgroundColor:backgroundColor
-                                                             textColor:[UIColor whiteColor]
-                                                                  font:[UIFont ows_boldFontWithSize:36.0]
-                                                              diameter:100] avatarImage];
+    return [avatarBuilder build];
 }
 
 - (UIImage *)build
 {
-    UIImage *image = [self.contactsManager imageForPhoneIdentifier:self.signalId];
-    if (!image) {
-        image = [self buildDefaultImage];
+    UIImage *_Nullable savedImage = [self buildSavedImage];
+    if (savedImage) {
+        return savedImage;
+    } else {
+        return [self buildDefaultImage];
     }
+}
 
-    return image;
+- (nullable UIImage *)buildSavedImage
+{
+    @throw [NSException
+        exceptionWithName:NSInternalInconsistencyException
+                   reason:[NSString stringWithFormat:@"You must override %@ in a subclass", NSStringFromSelector(_cmd)]
+                 userInfo:nil];
+}
+
+- (UIImage *)buildDefaultImage
+{
+    @throw [NSException
+        exceptionWithName:NSInternalInconsistencyException
+                   reason:[NSString stringWithFormat:@"You must override %@ in a subclass", NSStringFromSelector(_cmd)]
+                 userInfo:nil];
+}
+
+#pragma mark - Logging
+
++ (NSString *)tag
+{
+    return [NSString stringWithFormat:@"[%@]", self.class];
+}
+
+- (NSString *)tag
+{
+    return self.class.tag;
 }
 
 @end

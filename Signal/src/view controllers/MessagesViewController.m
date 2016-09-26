@@ -396,7 +396,7 @@ typedef enum : NSUInteger {
 
 #pragma mark - Initiliazers
 
-
+// Group update menu
 - (IBAction)didSelectShow:(id)sender {
     if (isGroupConversation) {
         UIBarButtonItem *spaceEdge =
@@ -488,8 +488,12 @@ typedef enum : NSUInteger {
 
 - (void)setNavigationTitle
 {
+    NSString *navTitle = self.thread.name;
+    if (isGroupConversation && [navTitle length] == 0) {
+        navTitle = NSLocalizedString(@"NEW_GROUP_DEFAULT_TITLE", @"");
+    }
     self.navController.activeNavigationBarTitle = nil;
-    self.title = self.thread.name;
+    self.title = navTitle;
 }
 
 - (void)initializeToolbars
@@ -530,10 +534,6 @@ typedef enum : NSUInteger {
 
 - (void)setupTitleLabelGestureRecognizer
 {
-    if (isGroupConversation) {
-        return;
-    }
-
     // Called on load/unload, but we only want to init once.
     if (self.navbarTitleLabel) {
         return;
@@ -1508,7 +1508,7 @@ typedef enum : NSUInteger {
             DDLogError(
                 @"%@ Unexpectedly segueing to show contact info with non-contact thread: %@", self.tag, self.thread);
         }
-        [controller configureWithContactThread:(TSContactThread *)self.thread];
+        [controller configureWithThread:self.thread];
     }
 
 }

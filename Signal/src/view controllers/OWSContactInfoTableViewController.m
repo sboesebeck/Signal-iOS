@@ -14,9 +14,10 @@
 #import <SignalServiceKit/OWSFingerprint.h>
 #import <SignalServiceKit/OWSFingerprintBuilder.h>
 #import <SignalServiceKit/OWSNotifyRemoteOfUpdatedDisappearingConfigurationJob.h>
-#import <SignalServiceKit/TSContactThread.h>
+#import <SignalServiceKit/TSGroupThread.h>
 #import <SignalServiceKit/TSMessagesManager.h>
 #import <SignalServiceKit/TSStorageManager.h>
+#import <SignalServiceKit/TSThread.h>
 
 @interface OWSContactInfoTableViewController ()
 
@@ -34,6 +35,7 @@
 @property (nonatomic) NSString *contactName;
 @property (nonatomic) NSString *signalId;
 @property (nonatomic) UIImage *avatarImage;
+@property (nonatomic) BOOL hidePrivacyVerificationCell;
 
 // TODO readonly.
 @property (nonatomic) NSArray<NSNumber *> *disappearingMessagesDurations;
@@ -85,11 +87,12 @@ typedef enum {
 {
     [super viewDidLoad];
 
+    // Only show fingerprint for contact threads.
+    self.verifyPrivacyCell.hidden = self.hidePrivacyVerificationCell;
+
     self.nameLabel.text = self.contactName;
     self.signalIdLabel.text = self.signalId;
-    self.avatar.image = [[[OWSAvatarBuilder alloc] initWithContactsManager:self.contactsManager
-                                                                  signalId:self.signalId
-                                                               contactName:self.contactName] build];
+    self.avatar.image = [OWSAvatarBuilder buildImageForThread:self.thread contactsManager:self.contactsManager];
 
     self.verifyPrivacyCell.textLabel.text = NSLocalizedString(@"VERIFY_PRIVACY", @"settings table cell label");
     self.toggleDisappearingMessagesCell.textLabel.text
@@ -150,18 +153,38 @@ typedef enum {
     self.avatar.layer.cornerRadius = self.avatar.frame.size.height / 2.0f;
 }
 
+- (void)configureWithThread:(TSThread *)thread
+{
+    self.thread = thread;
+    self.signalId = thread.contactIdentifier;
+    self.contactName = thread.name;
+
+    if ([thread isKindOfClass:[TSGroupThread class]]) {
+        if (self.contactName.length == 0) {
+            self.contactName = NSLocalizedString(@"NEW_GROUP_DEFAULT_TITLE", @"");
+        }
+        self.hidePrivacyVerificationCell = YES;
+    } else {
+        self.hidePrivacyVerificationCell = NO;
+    }
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    UITableViewCell *cell = [self tableView:tableView cellForRowAtIndexPath:indexPath];
+    if (cell.hidden) {
+        return 0;
+    } else {
+        return [super tableView:tableView heightForRowAtIndexPath:indexPath];
+    }
+}
+
 - (void)presentedModalWasDismissed
 {
     // Else row stays selected after dismissing modal.
     [self.tableView deselectRowAtIndexPath:[self.tableView indexPathForSelectedRow] animated:YES];
 }
 
-- (void)configureWithContactThread:(TSContactThread *)thread
-{
-    self.thread = thread;
-    self.contactName = thread.name;
-    self.signalId = thread.contactIdentifier;
-}
 
 - (IBAction)disappearingMessagesSwitchValueDidChange:(id)sender
 {

@@ -5,11 +5,11 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@class TSContactThread;
+@class TSThread;
 
 @interface OWSContactInfoTableViewController : UITableViewController
 
-- (void)configureWithContactThread:(TSContactThread *)thread;
+- (void)configureWithThread:(TSThread *)thread;
 - (void)presentedModalWasDismissed;
 
 @end

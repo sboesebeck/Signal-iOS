@@ -55,45 +55,32 @@ NS_ASSUME_NONNULL_BEGIN
         });
     }
 
-    NSString *name                     = thread.name;
-    _threadId                          = thread.uniqueId;
+    NSString *name = thread.name;
+    if (name.length == 0 && [thread isKindOfClass:[TSGroupThread class]]) {
+        name = NSLocalizedString(@"NEW_GROUP_DEFAULT_TITLE", @"");
+    }
+    UIImage *avatar = [OWSAvatarBuilder buildImageForThread:thread contactsManager:contactsManager];
+    self.threadId = thread.uniqueId;
     NSString *snippetLabel             = thread.lastMessageLabel;
     NSAttributedString *attributedDate = [self dateAttributedString:thread.lastMessageDate];
     NSUInteger unreadCount             = [[TSMessagesManager sharedManager] unreadMessagesInThread:thread];
 
     dispatch_async(dispatch_get_main_queue(), ^{
-      _nameLabel.text           = name;
-      _snippetLabel.text        = snippetLabel;
-      _timeLabel.attributedText = attributedDate;
+        self.nameLabel.text = name;
+        self.snippetLabel.text = snippetLabel;
+        self.timeLabel.attributedText = attributedDate;
+        self.contactPictureView.image = avatar;
+        [UIUtil applyRoundedBorderToImageView:&_contactPictureView];
 
-      if ([thread isKindOfClass:[TSGroupThread class]]) {
-          _contactPictureView.contentMode = UIViewContentModeScaleAspectFill;
-          _contactPictureView.image = ((TSGroupThread *)thread).groupModel.groupImage != nil
-                                          ? ((TSGroupThread *)thread).groupModel.groupImage
-                                          : [UIImage imageNamed:@"empty-group-avatar"];
+        self.separatorInset = UIEdgeInsetsMake(0, _contactPictureView.frame.size.width * 1.5f, 0, 0);
 
-          if ([_nameLabel.text length] == 0) {
-              _nameLabel.text = NSLocalizedString(@"NEW_GROUP_DEFAULT_TITLE", @"");
-          }
-      } else {
-          OWSAvatarBuilder *avatarBuilder = [[OWSAvatarBuilder alloc] initWithContactsManager:contactsManager
-                                                                                     signalId:thread.contactIdentifier
-                                                                                  contactName:thread.name];
-          _contactPictureView.image = [avatarBuilder build];
-      }
-
-      [UIUtil applyRoundedBorderToImageView:&_contactPictureView];
-
-
-      self.separatorInset = UIEdgeInsetsMake(0, _contactPictureView.frame.size.width * 1.5f, 0, 0);
-
-      if (thread.hasUnreadMessages) {
-          [self updateCellForUnreadMessage];
-      } else {
-          [self updateCellForReadMessage];
-      }
-      [self setUnreadMsgCount:unreadCount];
-      self.hidden = NO;
+        if (thread.hasUnreadMessages) {
+            [self updateCellForUnreadMessage];
+        } else {
+            [self updateCellForReadMessage];
+        }
+        [self setUnreadMsgCount:unreadCount];
+        self.hidden = NO;
     });
 }
 
